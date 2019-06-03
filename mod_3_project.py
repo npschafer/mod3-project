@@ -102,18 +102,23 @@ def compare_instructor_grade_distributions_by_permutation(df, npermutations=100,
     
     return all_pvalues
 
-def plot_instructor_cdfs(df, course_uuid, letter_grades = ['f_count', 'd_count', 'c_count', 'bc_count', 'b_count', 'ab_count', 'a_count'], npermutations=3, alpha=0.01, plot_all_permuted_cdfs=False, plot_permutation_mean_and_std=False, plot_permutation_distribution=False):
-    plt.figure()
+def plot_instructor_cdfs(df, course_uuid, letter_grades = ['f_count', 'd_count', 'c_count', 'bc_count', 'b_count', 'ab_count', 'a_count'], npermutations=3, alpha=0.01, plot_all_permuted_cdfs=False, plot_permutation_mean_and_std=False, plot_permutation_distribution=False, plot_original_cdfs=True):
+    if plot_original_cdfs:
+        plt.figure()
     course_df = df[df["course_uuid"] == course_uuid]
     grouped_course_offerings = course_df.groupby("instructor_id")
     num_instructors = len(grouped_course_offerings)
     all_cdfs = []
     for instructor, instructor_df in grouped_course_offerings:
         pmf, cdf = compute_pmf_and_cdf(instructor_df, letter_grades)
-        plt.plot(cdf, label=instructor_df["instructor_name"].unique()[0])
+        if plot_original_cdfs:
+            plt.plot(cdf, label=instructor_df["instructor_name"].unique()[0])
         all_cdfs.append(cdf)
-    plt.xticks(range(8), ["F", "D", "C", "BC", "B", "AB", "A"])
-    plt.legend(loc=(1.0, 0.5))
+
+    if plot_original_cdfs:
+        plt.xticks(range(8), ["F", "D", "C", "BC", "B", "AB", "A"])
+        plt.legend(loc=(1.0, 0.5))
+
     real_max_diff = find_max_difference_in_cdfs(all_cdfs)
     permuted_max_diffs = []
     for _ in range(npermutations):
@@ -135,7 +140,7 @@ def plot_instructor_cdfs(df, course_uuid, letter_grades = ['f_count', 'd_count',
         plt.errorbar(["F", "D", "C", "BC", "B", "AB", "A"], mean_cdf, yerr=4*std_cdf, linewidth=2.0, color='black')
     permuted_max_diffs = np.array(permuted_max_diffs)
     p_value = np.mean(permuted_max_diffs >= real_max_diff)
-    #print(p_value)
+    print(p_value)
     if plot_permutation_distribution:
         plt.figure()
         sns.distplot( permuted_max_diffs, norm_hist=False, kde=False, hist=True, color="red", label="Differences")
@@ -182,4 +187,45 @@ def plot_grade_distribution(grades, barplot=True, lineplot=False, distribution_t
         plt.title("Grade cumulative density function", fontsize=30)
         plt.ylabel("CDF", fontsize=30)
     plt.xlabel("Grade", fontsize=30)
+
+def get_pvalues_by_subject(df, results):
+    pvalue_by_subject_dict = {}
+    for result in results.items():
+        course_uuid, (pvalue, num_instructors) = result
+        subject_name = df[df["course_uuid"] == course_uuid]["subject_name"].iloc[0]
+        if subject_name in pvalue_by_subject_dict.keys():
+            pvalue_by_subject_dict[subject_name].append(pvalue)
+        else:
+            pvalue_by_subject_dict[subject_name] = [pvalue]
     
+    return pvalue_by_subject_dict
+
+def bootstrap_confidence_intervals_for_mean(data, n_resample=1000, alpha=0.05):
+    means = []
+    for _ in range(n_resample):
+        means.append(np.mean(np.random.choice(data, len(data))))
+    sorted_means = sorted(means)
+    lower_ci_index = int(alpha/2.0*n_resample)
+    upper_ci_index = int((1-alpha/2.0)*n_resample)
+    return np.mean(data), (sorted_means[lower_ci_index], sorted_means[upper_ci_index])
+
+def plot_pvalues_by_subject_with_confidence_intervals(pvalue_by_subject_dict, num_to_plot=10):
+    plt.figure(figsize=(8,8))
+    bootstrap_results = []
+    for subject, pvalues in pvalue_by_subject_dict.items():
+        mean, (lower_ci, upper_ci) = bootstrap_confidence_intervals_for_mean(pvalues)
+        bootstrap_results.append((subject, mean, (lower_ci, upper_ci)))
+
+    sorted_results = sorted(bootstrap_results, key=lambda x: x[1])
+
+    subjects = [x[0] for x in sorted_results]
+    lower_cis = [np.abs(x[1]-x[2][0]) for x in sorted_results]
+    upper_cis = [np.abs(x[1]-x[2][1]) for x in sorted_results]
+    means = [x[1] for x in sorted_results]
+
+    if num_to_plot > 0:
+        plt.barh(subjects[:num_to_plot], means[:num_to_plot], xerr=[lower_cis[:num_to_plot], upper_cis[:num_to_plot]])
+    else:
+        plt.barh(subjects[num_to_plot:], means[num_to_plot:], xerr=[lower_cis[num_to_plot:], upper_cis[num_to_plot:]])
+    plt.xlim([0,1])
+    plt.show()
