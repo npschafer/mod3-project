@@ -192,7 +192,7 @@ def get_pvalues_by_subject(df, results):
     pvalue_by_subject_dict = {}
     for result in results.items():
         course_uuid, (pvalue, num_instructors) = result
-        subject_name = df[df["course_uuid"] == course_uuid]["subject_name"].iloc[0]
+        subject_name = df[df["course_uuid"] == course_uuid]["subject_name"].iloc[0].upper()
         if subject_name in pvalue_by_subject_dict.keys():
             pvalue_by_subject_dict[subject_name].append(pvalue)
         else:
@@ -209,12 +209,13 @@ def bootstrap_confidence_intervals_for_mean(data, n_resample=1000, alpha=0.05):
     upper_ci_index = int((1-alpha/2.0)*n_resample)
     return np.mean(data), (sorted_means[lower_ci_index], sorted_means[upper_ci_index])
 
-def plot_pvalues_by_subject_with_confidence_intervals(pvalue_by_subject_dict, num_to_plot=10):
-    plt.figure(figsize=(8,8))
+def plot_pvalues_by_subject_with_confidence_intervals(pvalue_by_subject_dict, num_to_plot=10, min_num_classes=0):
+    plt.figure(figsize=(8,1*np.abs(num_to_plot)))
     bootstrap_results = []
     for subject, pvalues in pvalue_by_subject_dict.items():
-        mean, (lower_ci, upper_ci) = bootstrap_confidence_intervals_for_mean(pvalues)
-        bootstrap_results.append((subject, mean, (lower_ci, upper_ci)))
+        if len(pvalues) > min_num_classes:
+            mean, (lower_ci, upper_ci) = bootstrap_confidence_intervals_for_mean(pvalues)
+            bootstrap_results.append((subject, mean, (lower_ci, upper_ci)))
 
     sorted_results = sorted(bootstrap_results, key=lambda x: x[1])
 
